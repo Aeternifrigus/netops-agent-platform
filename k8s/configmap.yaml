@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netops-config
+  namespace: netops-agents
+data:
+  ADK_MODEL: "gemini-2.0-flash"
+  # Unset -> in-memory graph.
+  NEO4J_URI: ""
