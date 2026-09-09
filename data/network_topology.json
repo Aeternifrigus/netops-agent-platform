@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    {"id": "core-warsaw", "label": "Tower", "properties": {"region": "Mazovia", "capacity": 5000}},
+    {"id": "tower-001", "label": "Tower", "properties": {"region": "Mazovia", "capacity": 800}},
+    {"id": "tower-002", "label": "Tower", "properties": {"region": "Mazovia", "capacity": 600}},
+    {"id": "tower-003", "label": "Tower", "properties": {"region": "Mazovia", "capacity": 450}},
+    {"id": "tower-004", "label": "Tower", "properties": {"region": "Malopolska", "capacity": 700}},
+    {"id": "tower-005", "label": "Tower", "properties": {"region": "Malopolska", "capacity": 500}},
+    {"id": "core-krakow", "label": "Tower", "properties": {"region": "Malopolska", "capacity": 4000}},
+    {"id": "region-mazovia", "label": "Region", "properties": {"population": 5400000}},
+    {"id": "region-malopolska", "label": "Region", "properties": {"population": 3400000}}
+  ],
+  "edges": [
+    {"source": "tower-001", "target": "core-warsaw", "rel_type": "UPSTREAM_OF", "properties": {}},
+    {"source": "tower-002", "target": "core-warsaw", "rel_type": "UPSTREAM_OF", "properties": {}},
+    {"source": "tower-003", "target": "tower-001", "rel_type": "UPSTREAM_OF", "properties": {}},
+    {"source": "tower-004", "target": "core-krakow", "rel_type": "UPSTREAM_OF", "properties": {}},
+    {"source": "tower-005", "target": "tower-004", "rel_type": "UPSTREAM_OF", "properties": {}},
+    {"source": "core-warsaw", "target": "region-mazovia", "rel_type": "SERVES", "properties": {}},
+    {"source": "core-krakow", "target": "region-malopolska", "rel_type": "SERVES", "properties": {}},
+    {"source": "core-warsaw", "target": "core-krakow", "rel_type": "BACKS_UP", "properties": {}}
+  ]
+}
