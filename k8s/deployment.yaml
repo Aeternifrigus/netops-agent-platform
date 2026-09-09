@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netops-agent-platform
+  namespace: netops-agents
+  labels:
+    app: netops-agent-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: netops-agent-platform
+  template:
+    metadata:
+      labels:
+        app: netops-agent-platform
+    spec:
+      containers:
+        - name: netops-agent-platform
+          image: netops-agent-platform:latest   # replace with a real registry path at deploy time
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: netops-config
+          env:
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: netops-secrets
+                  key: GOOGLE_API_KEY
+                  optional: true   # absent -> /chat returns 503, /tools/* still work
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: netops-secrets
+                  key: NEO4J_PASSWORD
+                  optional: true
+          # CPU only; the anomaly model is a few numpy arrays.
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
