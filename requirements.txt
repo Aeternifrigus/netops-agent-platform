@@ -1,6 +1,6 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
+fastapi>=0.133,<1
+uvicorn[standard]>=0.34,<1
+pydantic>=2.10,<3
 numpy==2.2.1
 
 google-adk==2.8.0
