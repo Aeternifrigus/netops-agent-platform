@@ -1,10 +1,10 @@
 __pycache__/
 *.pyc
 .venv/
-venv/
 .pytest_cache/
 .ruff_cache/
-.cache/
-*.egg-info/
-.DS_Store
+.env
+
+# Build output. `make train` reproduces it, and a committed model artifact is a
+# binary nobody can review in a diff.
 app/nn/anomaly_model.npz
