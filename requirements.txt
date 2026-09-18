@@ -9,6 +9,30 @@ google-adk==2.8.0
 # pattern as every optional dependency in this project.
 neo4j==6.3.0
 
-pytest==8.3.4
+# Multi-tenancy, accounts and the audit trail. Absent DATABASE_URL, the service
+# runs in open mode and none of this is reached, but the packages are required
+# because the modules are imported at startup to decide which mode to enter.
+sqlalchemy[asyncio]==2.0.54
+asyncpg==0.31.0
+alembic==1.20.0
+psycopg2-binary==2.9.13
+pydantic-settings==2.15.0
+email-validator==2.3.0
+python-jose[cryptography]==3.5.0
+python-multipart==0.0.32
+
+# bcrypt is used directly rather than through passlib. passlib 1.7.4 reads
+# bcrypt.__about__.__version__ during backend detection, which bcrypt 4.1
+# removed, and its probe then raises on the 72-byte limit before any password is
+# hashed. passlib has had no release since 2020, so keeping it would mean
+# pinning bcrypt backwards and away from its own security fixes.
+bcrypt==5.0.0
+
+# pytest is pinned to 9.x because pytest-asyncio 1.4 requires it. The original
+# pin of 8.3.4 was left in place when the async tests were added, which resolved
+# fine in a venv that already had pytest-asyncio's upgrade applied and failed
+# only on a clean install. Caught by verifying from a fresh clone.
+pytest==9.1.1
+pytest-asyncio==1.4.0
 httpx==0.28.1
 ruff==0.8.4
