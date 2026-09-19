@@ -1,3 +1,8 @@
+# Local development runs in open mode unless DATABASE_URL is set. Both can be
+# overridden from the shell, e.g. `ENVIRONMENT=production make run`.
+export ENVIRONMENT ?= local
+export ALLOW_OPEN_MODE ?= true
+
 .PHONY: install train test test-tenancy lint run migrate dev-db dev-redis worker smoke docker-build clean
 
 install:

@@ -26,12 +26,15 @@ make run          # http://localhost:8080/docs
 make test
 ```
 
-Nothing external is required to run it:
+Nothing external is required to run it locally. The `make` targets set
+`ENVIRONMENT=local` and `ALLOW_OPEN_MODE=true`; outside `make`, copy
+`.env.example` to `.env` for the same defaults.
 
 | Not configured | Behaviour |
 |---|---|
-| Neo4j | in-memory graph |
-| `DATABASE_URL` | open mode: no auth, no tenants (refused outside `ENVIRONMENT=local`) |
+| `ENVIRONMENT` | treated as `production`: refuses to start without `DATABASE_URL` and a JWT secret of at least 32 characters |
+| Neo4j | in-memory graph, loaded read-only from `data/` |
+| `DATABASE_URL` | refuses to start, unless `ALLOW_OPEN_MODE=true` and `ENVIRONMENT=local`, which runs open mode: no auth, no tenants |
 | `BROKER_URL` | `/chat` runs inline; background requests return 503 |
 | `GOOGLE_API_KEY` | `/chat` returns 503; `/tools/*` still work |
 
@@ -47,6 +50,16 @@ export BROKER_URL=redis://localhost:6379/0
 make worker                     # in a second terminal
 
 make test-tenancy
+```
+
+### Kubernetes
+
+```bash
+kubectl apply -f k8s/namespace.yaml -f k8s/configmap.yaml
+# create netops-secrets from k8s/secret.example.yaml (DATABASE_URL and JWT_SECRET are required)
+kubectl apply -f k8s/migrate-job.yaml
+kubectl -n netops-agents wait --for=condition=complete job/netops-migrate --timeout=120s
+kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -f k8s/hpa.yaml
 ```
 
 ## API
@@ -118,7 +131,8 @@ tests/
 
 - No live model run has been tested (no Gemini key), so `/chat` is verified up
   to the model call.
-- The Kubernetes manifests haven't been applied to a real cluster, and the Neo4j
-  backend hasn't been run against a real instance.
+- The Kubernetes manifests pass schema validation (kubeconform) but haven't been
+  applied to a real cluster, and the Neo4j backend hasn't been run against a
+  real instance. There is no manifest for the Celery worker yet.
 - No rate limiting, no refresh-token revocation, no retries for failed background
   runs, and no depth or cost limits on GraphQL queries.
