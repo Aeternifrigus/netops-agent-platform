@@ -11,6 +11,19 @@ from sqlalchemy import text
 
 from app.config import settings
 
+
+@pytest.fixture(scope="session", autouse=True)
+def trained_anomaly_model() -> None:
+    """Train the anomaly model once if it is missing, so a fresh clone can run pytest.
+
+    The artifact is gitignored, and the scoring tests load it from disk.
+    """
+    from app.nn.train_anomaly_model import MODEL_PATH, train_and_save
+
+    if not MODEL_PATH.exists():
+        train_and_save()
+
+
 requires_database = pytest.mark.skipif(
     not settings.auth_enabled,
     reason="set DATABASE_URL to run the tenancy and authentication tests",

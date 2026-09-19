@@ -9,6 +9,9 @@ jobs:
   # No database or credentials.
   open-mode:
     runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: local
+      ALLOW_OPEN_MODE: "true"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6

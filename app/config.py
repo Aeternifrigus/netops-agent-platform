@@ -10,10 +10,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    environment: str = Field(default="local")
+    # Defaults to production so a deployment that forgets to set it gets the
+    # strict checks below, not the relaxed local ones.
+    environment: str = Field(default="production")
 
     # Absent means open mode: no accounts, no tenants, no audit trail.
     database_url: str | None = Field(default=None)
+    # Open mode has to be asked for. A missing DATABASE_URL on its own is
+    # treated as a mistake, never as a request to switch authentication off.
+    allow_open_mode: bool = Field(default=False)
     db_echo: bool = False
 
     # Unset: Celery runs eagerly and background /chat is disabled.
@@ -34,15 +39,26 @@ class Settings(BaseSettings):
         return bool(self.broker_url and self.database_url)
 
     def validate_for_environment(self) -> list[str]:
-        """Configuration that should stop a non-local boot rather than warn."""
+        """Configuration that should stop the service from booting."""
         problems: list[str] = []
-        if self.environment == "local":
-            return problems
+        is_local = self.environment == "local"
 
         if not self.database_url:
-            problems.append(
-                "no DATABASE_URL, which leaves every endpoint unauthenticated"
-            )
+            if not self.allow_open_mode:
+                problems.append(
+                    "no DATABASE_URL, which would leave every endpoint unauthenticated; "
+                    "set DATABASE_URL, or ALLOW_OPEN_MODE=true with ENVIRONMENT=local "
+                    "for local development"
+                )
+            elif not is_local:
+                problems.append(
+                    f"ALLOW_OPEN_MODE is only permitted with ENVIRONMENT=local "
+                    f"(ENVIRONMENT is {self.environment!r})"
+                )
+
+        if is_local:
+            return problems
+
         if self.jwt_secret == "insecure-local-development-key":
             problems.append("jwt_secret is still the development default")
         elif len(self.jwt_secret) < 32:

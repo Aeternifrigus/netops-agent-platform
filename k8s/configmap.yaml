@@ -4,6 +4,10 @@ metadata:
   name: netops-config
   namespace: netops-agents
 data:
+  # Production turns on the startup checks: the pods refuse to start without
+  # DATABASE_URL and a JWT_SECRET of at least 32 characters.
+  ENVIRONMENT: "production"
   ADK_MODEL: "gemini-2.0-flash"
-  # Unset -> in-memory graph.
+  # Unset -> in-memory graph, loaded read-only from data/, so every replica
+  # serves the same topology.
   NEO4J_URI: ""

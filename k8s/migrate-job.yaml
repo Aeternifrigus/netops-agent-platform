@@ -1,0 +1,40 @@
+# Applies the database migrations, including the row-level security policies.
+# Run it before the Deployment, and again after every release that adds a
+# migration:
+#   kubectl apply -f k8s/migrate-job.yaml
+#   kubectl -n netops-agents wait --for=condition=complete job/netops-migrate --timeout=120s
+# A Job rather than an initContainer, so replicas never race each other to
+# migrate. Delete the finished Job before re-applying it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: netops-migrate
+  namespace: netops-agents
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: netops-agent-platform:latest   # same image as the Deployment
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: netops-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: netops-secrets
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: netops-secrets
+                  key: JWT_SECRET
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
