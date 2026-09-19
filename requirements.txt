@@ -32,6 +32,15 @@ bcrypt==5.0.0
 # pin of 8.3.4 was left in place when the async tests were added, which resolved
 # fine in a venv that already had pytest-asyncio's upgrade applied and failed
 # only on a clean install. Caught by verifying from a fresh clone.
+# Background agent runs. Absent BROKER_URL, Celery runs tasks eagerly and nothing
+# here needs a Redis server; the packages are still imported at startup to decide
+# which mode to enter.
+celery[redis]==5.6.3
+redis==6.4.0
+
+# GraphQL read surface, mounted at /graphql beside the REST API.
+strawberry-graphql[fastapi]==0.327.7
+
 pytest==9.1.1
 pytest-asyncio==1.4.0
 httpx==0.28.1

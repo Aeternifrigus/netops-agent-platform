@@ -81,9 +81,7 @@ class User(Base):
     tenant: Mapped[Tenant] = relationship(back_populates="users")
 
     __table_args__ = (
-        # Unique per tenant, not globally. Two operators may employ the same
-        # engineer, and a global constraint would leak that an address is
-        # already registered somewhere else.
+        # Unique per tenant; a global constraint would leak cross-tenant info.
         UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
         CheckConstraint("role in ('viewer','operator','admin')", name="ck_users_role"),
         Index("ix_users_tenant", "tenant_id"),
@@ -179,15 +177,48 @@ class AuditEvent(Base):
     )
 
 
+class AgentTask(Base):
+    """A background agent run, owned by a tenant."""
+
+    __tablename__ = "agent_tasks"
+
+    id: Mapped[uuid.UUID] = pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    celery_task_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    duration_ms: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('pending','running','succeeded','failed')",
+            name="ck_agent_tasks_status",
+        ),
+        Index("ix_agent_tasks_tenant_created", "tenant_id", "created_at"),
+        Index("ix_agent_tasks_celery", "celery_task_id"),
+    )
+
+
 # Read by the migration, by /health and by the isolation tests, so the three
 # cannot drift apart.
 TENANT_SCOPED_TABLES = (
     "users", "tool_invocations", "conversations", "messages", "audit_events",
+    "agent_tasks",
 )
 
-# Which role each platform operation requires. Reading topology is cheap and
-# safe; a live agent conversation reaches a model and costs money; account
-# management is neither.
+# Minimum role per operation. /chat costs money, so it needs operator.
 TOOL_MIN_ROLE: dict[str, Role] = {
     "get_downstream_impact": Role.VIEWER,
     "score_tower_health": Role.VIEWER,
