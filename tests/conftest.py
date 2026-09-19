@@ -30,7 +30,7 @@ if settings.auth_enabled:
         """Truncate before each test, dispose the engine after."""
         async with get_sessionmaker()() as session:
             await session.execute(text(
-                "TRUNCATE audit_events, messages, conversations, tool_invocations, "
+                "TRUNCATE agent_tasks, audit_events, messages, conversations, tool_invocations, "
                 "users, tenants CASCADE"
             ))
             await session.commit()

@@ -1,4 +1,4 @@
-.PHONY: install train test test-tenancy lint run migrate dev-db smoke docker-build clean
+.PHONY: install train test test-tenancy lint run migrate dev-db dev-redis worker smoke docker-build clean
 
 install:
 	pip install -r requirements.txt
@@ -6,12 +6,10 @@ install:
 train:
 	python -m app.nn.train_anomaly_model
 
-# Runs in open mode: the tenancy tests skip, everything else runs, and no
-# database is needed. This is the bare-checkout path.
+# Without DATABASE_URL the tenancy tests are skipped.
 test: train
 	pytest -v
 
-# A local PostgreSQL with the unprivileged application role already created.
 dev-db:
 	docker run -d --name netops-db -p 5432:5432 \
 		-e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=netops postgres:16
@@ -23,7 +21,13 @@ dev-db:
 migrate:
 	alembic upgrade head
 
-# The full suite, including tenant isolation against a real PostgreSQL.
+dev-redis:
+	docker run -d --name netops-redis -p 6379:6379 redis:7
+
+# Needs DATABASE_URL and BROKER_URL.
+worker:
+	celery -A app.tasks:celery_app worker --loglevel=info
+
 test-tenancy: train migrate
 	pytest -v
 

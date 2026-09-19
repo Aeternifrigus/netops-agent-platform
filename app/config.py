@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     database_url: str | None = Field(default=None)
     db_echo: bool = False
 
+    # Unset: Celery runs eagerly and background /chat is disabled.
+    broker_url: str | None = Field(default=None)
+
     jwt_secret: str = Field(default="insecure-local-development-key")
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 30
@@ -24,6 +27,11 @@ class Settings(BaseSettings):
     @property
     def auth_enabled(self) -> bool:
         return bool(self.database_url)
+
+    @property
+    def background_enabled(self) -> bool:
+        """Background execution needs both a broker and somewhere to record runs."""
+        return bool(self.broker_url and self.database_url)
 
     def validate_for_environment(self) -> list[str]:
         """Configuration that should stop a non-local boot rather than warn."""

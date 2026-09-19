@@ -6,10 +6,12 @@ import os
 import time
 import uuid as _uuid
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from .agents import tools
@@ -19,6 +21,7 @@ from .deps import Principal, Recording, Session, require_role
 from .guard import inspect_input
 from .models import (
     TENANT_SCOPED_TABLES,
+    AgentTask,
     AuditEvent,
     Conversation,
     Message,
@@ -27,6 +30,7 @@ from .models import (
 )
 from .routers import auth as auth_router
 from .schemas import AuditOut, ConversationOut, MessageOut, ToolInvocationOut
+from .tasks import TASK_NAME, broker_mode, celery_app
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -64,6 +68,11 @@ app = FastAPI(
 
 app.include_router(auth_router.router)
 
+# GraphQL reuses the REST auth and session dependencies.
+from .graphql_api import router as graphql_router  # noqa: E402
+
+app.include_router(graphql_router, prefix="")
+
 _orchestrator = None
 
 
@@ -95,6 +104,21 @@ class RelevanceRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000)
+    # Opt-in so existing callers keep getting a synchronous reply.
+    background: bool = False
+
+
+class TaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: _uuid.UUID
+    status: str
+    prompt: str
+    reply: str | None = None
+    error: str | None = None
+    conversation_id: _uuid.UUID | None = None
+    duration_ms: float
+    created_at: datetime
+    finished_at: datetime | None = None
 
 
 # ── health ───────────────────────────────────────────────────────
@@ -108,6 +132,10 @@ async def health() -> dict:
         "model_configured": bool(os.environ.get("GOOGLE_API_KEY")),
         "graph_backend": tools._get_graph().name if tools._graph else "not yet loaded",
         "auth": "enabled" if settings.auth_enabled else "OPEN MODE (unauthenticated)",
+        "background_execution": (
+            broker_mode() if settings.background_enabled
+            else "inline (needs both a broker and a database)"
+        ),
     }
 
     if not settings.auth_enabled:
@@ -230,6 +258,47 @@ async def chat(
             ),
         )
 
+    if req.background:
+        if not settings.background_enabled:
+            # Don't fall back to inline: the response shape would differ.
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Background execution is not configured. It needs both "
+                    "BROKER_URL and DATABASE_URL; /health reports which are present."
+                ),
+            )
+
+        # Guard and role check have already run, so nothing invalid is queued.
+        task = AgentTask(
+            tenant_id=principal.tenant_id, actor_id=principal.user_id,
+            prompt=req.message, status="pending",
+        )
+        session.add(task)
+        await session.flush()
+        task_id = task.id
+
+        recorder.audit("chat.enqueue", "allowed", {"task_id": str(task_id)})
+        # Commit before dispatch so the worker can see the row.
+        await recorder.commit_now()
+
+        celery_app.send_task(
+            TASK_NAME,
+            # Identifiers only. The worker reads the prompt from the row under its
+            # own tenant scope, so a misrouted message has nothing it can read.
+            args=[str(task_id), str(principal.tenant_id),
+                  str(principal.user_id) if principal.user_id else None],
+        )
+
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content={
+                "task_id": str(task_id),
+                "status": "pending",
+                "poll": f"/tasks/{task_id}",
+            },
+        )
+
     from google.adk.runners import InMemoryRunner
     from google.genai import types
 
@@ -271,11 +340,43 @@ async def chat(
 
 
 # ── tenant-scoped history ────────────────────────────────────────
-#
-# None of the queries below filter by tenant_id. They do not need to: the session
-# is already bound to the caller's tenant and the database refuses anything else.
-# That absence is the argument for putting the rule in PostgreSQL rather than in
-# a WHERE clause every future endpoint author has to remember.
+# No tenant_id filters here: the session is scoped and RLS does the filtering.
+
+@app.get("/tasks/{task_id}", response_model=TaskOut)
+async def get_task(
+    task_id: str,
+    session: Session,
+    principal: Annotated[Principal, Depends(require_role(Role.VIEWER))],
+) -> AgentTask:
+    """Read one background run."""
+    if session is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
+
+    try:
+        parsed = _uuid.UUID(task_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found") from exc
+
+    task = await session.scalar(select(AgentTask).where(AgentTask.id == parsed))
+    # 404 rather than 403, because 403 would confirm the identifier is real.
+    if task is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
+    return task
+
+
+@app.get("/tasks", response_model=list[TaskOut])
+async def list_tasks(
+    session: Session,
+    principal: Annotated[Principal, Depends(require_role(Role.VIEWER))],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list:
+    if session is None:
+        return []
+    result = await session.scalars(
+        select(AgentTask).order_by(AgentTask.created_at.desc()).limit(limit)
+    )
+    return list(result)
+
 
 @app.get("/invocations", response_model=list[ToolInvocationOut])
 async def list_invocations(
