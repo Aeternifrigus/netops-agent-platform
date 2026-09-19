@@ -1,4 +1,8 @@
-"""MLP with a hand-written backward pass. Gradients are checked in tests/test_platform.py."""
+"""MLP with a hand-written backward pass. Gradients are checked in tests/test_platform.py.
+
+Codes like CA3 and CA12 refer to the math reference in Data Craft Nexus:
+https://github.com/Aeternifrigus/Data-Craft-Nexus/blob/main/Math.md
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -45,7 +49,7 @@ class MLP:
         self.layers: list[Layer] = []
         for fan_in, fan_out in zip(sizes[:-1], sizes[1:], strict=True):
             # He initialisation: scaled for ReLU so activations neither vanish
-            # nor explode as depth increases (see CA12's failure mode).
+            # nor explode as depth increases (CA12, ReLU).
             scale = np.sqrt(2.0 / fan_in)
             W = rng.normal(0, scale, size=(fan_in, fan_out)).astype(np.float64)
             b = np.zeros((1, fan_out), dtype=np.float64)
