@@ -6,13 +6,14 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import Session
 
 from .config import settings
 
@@ -58,12 +59,33 @@ async def dispose_engine() -> None:
     _engine, _sessionmaker = None, None
 
 
+_TENANT_INFO_KEY = "tenant_id"
+_SET_SCOPE = text("SELECT set_config(:key, :value, true)")
+
+
+def _scope_params(tenant_id: uuid.UUID | None) -> dict[str, str]:
+    return {"key": TENANT_SETTING, "value": str(tenant_id) if tenant_id else ""}
+
+
+@event.listens_for(Session, "after_begin")
+def _rescope_new_transaction(session: Session, transaction, connection) -> None:
+    """Re-apply the tenant scope at the start of every transaction.
+
+    set_config(..., true) only lasts until the transaction ends, so without
+    this a session that commits and keeps going (Recorder.commit_now, or
+    /chat releasing its connection during the model call) would continue
+    with no tenant: reads return nothing and writes fail the RLS check.
+    """
+    if _TENANT_INFO_KEY in session.info:
+        connection.execute(_SET_SCOPE, _scope_params(session.info[_TENANT_INFO_KEY]))
+
+
 async def apply_tenant_scope(session: AsyncSession, tenant_id: uuid.UUID | None) -> None:
-    """Bind this transaction to one tenant."""
-    await session.execute(
-        text("SELECT set_config(:key, :value, true)"),
-        {"key": TENANT_SETTING, "value": str(tenant_id) if tenant_id else ""},
-    )
+    """Bind this session to one tenant, for this and every later transaction."""
+    session.info[_TENANT_INFO_KEY] = tenant_id
+    # Also set it now, in case a transaction is already open (login resolves
+    # the tenant first and scopes the same transaction afterwards).
+    await session.execute(_SET_SCOPE, _scope_params(tenant_id))
 
 
 @asynccontextmanager

@@ -302,6 +302,12 @@ async def chat(
     from google.adk.runners import InMemoryRunner
     from google.genai import types
 
+    if session is not None:
+        # End the transaction so its pooled connection goes back while the
+        # model runs, which can take many seconds. The writes below start a
+        # new transaction, and the session re-applies the tenant scope to it.
+        await session.commit()
+
     actor = str(principal.user_id or "open-mode")
     runner = InMemoryRunner(agent=_get_orchestrator(), app_name="netops")
     adk_session = await runner.session_service.create_session(
